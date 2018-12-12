@@ -1,18 +1,23 @@
 Project(OpenSimSynergyPlugin)
+Project(OpenSimSynergyPlugin)
 
-cmake_minimum_required(VERSION 2.6)
+cmake_minimum_required(VERSION 3.2)
 
 SET(UKIT PLUGIN)
 
 FILE(GLOB SOURCE_FILES *.cpp)
 FILE(GLOB INCLUDE_FILES *.h)
 
+# C++11 is required
+SET(CMAKE_CXX_STANDARD 11)
+SET(CMAKE_CXX_STANDARD_REQUIRED ON)
+
 SET(EXPORT_MACRO OSIM${UKIT}_EXPORTS)
 
 SET(OPENSIM_INSTALL_DIR $ENV{OPENSIM_HOME} 
 		CACHE PATH "Top-level directory of OpenSim install")
 		
-SET(PLUGIN_NAME "osimPlugin" CACHE STRING "Name of shared library to create")
+SET(PLUGIN_NAME "osimSynergyPlugin" CACHE STRING "Name of shared library to create")
 
 # To add Debug feature add ";Debug" after Release on the line below
 SET(CMAKE_CONFIGURATION_TYPES "RelWithDebInfo;Release" 
@@ -23,7 +28,7 @@ SET(SIMTK_HEADERS_DIR ${OPENSIM_INSTALL_DIR}/sdk/Simbody/include)
 SET(OPENSIM_HEADERS_DIR ${OPENSIM_INSTALL_DIR}/sdk/include)
 INCLUDE_DIRECTORIES(${SIMTK_HEADERS_DIR} ${OPENSIM_HEADERS_DIR})
 # Libraries and dlls
-SET(OPENSIM_LIBS_DIR ${OPENSIM_INSTALL_DIR}/sdk/lib ${OPENSIM_INSTALL_DIR}/lib)
+SET(OPENSIM_LIBS_DIR ${OPENSIM_INSTALL_DIR}/sdk/lib ${OPENSIM_INSTALL_DIR}/lib ${OPENSIM_INSTALL_DIR}/sdk/SimBody/lib)
 SET(OPENSIM_DLLS_DIR ${OPENSIM_INSTALL_DIR}/bin)
 LINK_DIRECTORIES(${OPENSIM_LIBS_DIR} ${OPENSIM_DLLS_DIR})
 
@@ -31,14 +36,14 @@ LINK_DIRECTORIES(${OPENSIM_LIBS_DIR} ${OPENSIM_DLLS_DIR})
 SET(NameSpace "OpenSim_" CACHE STRING "Prefix for simtk lib names, includes trailing '_'. Leave empty to use stock SimTK libraries.")
 MARK_AS_ADVANCED(NameSpace)
 
-SET(SIMTK_COMMON_LIB debug ${NameSpace}SimTKcommon_d optimized ${NameSpace}SimTKcommon)
-SET(SIMTK_MATH_LIB debug ${NameSpace}SimTKmath_d optimized ${NameSpace}SimTKmath)
-SET(SIMTK_SIMBODY_LIB debug ${NameSpace}SimTKsimbody_d optimized ${NameSpace}SimTKsimbody)
+SET(SIMTK_COMMON_LIB debug SimTKcommon_d optimized SimTKcommon)
+SET(SIMTK_MATH_LIB debug SimTKmath_d optimized SimTKmath)
+SET(SIMTK_SIMBODY_LIB debug SimTKsimbody_d optimized SimTKsimbody)
 
 SET(SIMTK_ALL_LIBS	${SIMTK_COMMON_LIB} 
                     ${SIMTK_MATH_LIB} 
                     ${SIMTK_SIMBODY_LIB} 
-                   pthreadVC2)
+                   )
 
 LINK_LIBRARIES(
 	debug osimSimulation_d	optimized osimSimulation
@@ -49,16 +54,12 @@ LINK_LIBRARIES(
 	${SIMTK_ALL_LIBS}
 )
 
-IF(WIN32)
-	SET(PLATFORM_LIBS  pthreadVC2)
-ELSE (WIN32)
-  SET(NameSpace "")
-  IF(APPLE)
-	SET(PLATFORM_LIBS  SimTKAtlas)
+SET(NameSpace "")
+IF(APPLE)
+  SET(PLATFORM_LIBS  SimTKAtlas)
   ELSE(APPLE)
-	SET(PLTAFORM_LIBS SimTKAtlas_Lin_generic)
-  ENDIF(APPLE)
-ENDIF (WIN32)
+    SET(PLATFORM_LIBS SimTKAtlas_Lin_generic)
+ENDIF(APPLE)
 
 ADD_LIBRARY(${PLUGIN_NAME} SHARED ${SOURCE_FILES} ${INCLUDE_FILES}) 
 
