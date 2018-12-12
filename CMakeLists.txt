@@ -19,7 +19,7 @@ SET(CMAKE_CONFIGURATION_TYPES "RelWithDebInfo;Release"
       CACHE STRING "Semicolon separated list of supported configuration types, only supports Debug, Release, MinSizeRel, and RelWithDebInfo, anything else will be ignored." FORCE )
 
 # Location of headers
-SET(SIMTK_HEADERS_DIR ${OPENSIM_INSTALL_DIR}/sdk/include/SimTK/include)
+SET(SIMTK_HEADERS_DIR ${OPENSIM_INSTALL_DIR}/sdk/Simbody/include)
 SET(OPENSIM_HEADERS_DIR ${OPENSIM_INSTALL_DIR}/sdk/include)
 INCLUDE_DIRECTORIES(${SIMTK_HEADERS_DIR} ${OPENSIM_HEADERS_DIR})
 # Libraries and dlls
