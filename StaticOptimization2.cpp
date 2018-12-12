@@ -452,9 +452,9 @@ record(const SimTK::State& s)
 	SimTK::Vector lowerBounds(np), upperBounds(np);
 	if(size_awm<=0){ // Bounds from actuators if no actuator weighting matrix
 		for(int i=0,j=0;i<fs.getSize();i++) {
-			Actuator& act = fs.get(i);
-			lowerBounds(j) = act.getMinControl();
-			upperBounds(j) = act.getMaxControl();
+			ScalarActuator* act = dynamic_cast<ScalarActuator*>(&fs.get(i));
+			lowerBounds(j) = act->getMinControl();
+			upperBounds(j) = act->getMaxControl();
 			j++;
 		}
 	}else{
@@ -589,11 +589,11 @@ record(const SimTK::State& s)
 	if(size_awm > 0){	
 		/* Make sure activations are within actuator limits */												// KAT: Limits on activations based on control constraints
 		for(int i=0; i<na; i++) {
-			Actuator& act = fs.get(i);
-			if(activ(i,0) < act.getMinControl()) {
-				activ(i,0) = act.getMinControl();}
-			if(activ(i,0) > act.getMaxControl()) {
-				activ(i,0) = act.getMaxControl();}
+			ScalarActuator* act = dynamic_cast<ScalarActuator*>(&fs.get(i));
+			if(activ(i,0) < act->getMinControl()) {
+				activ(i,0) = act->getMinControl();}
+			if(activ(i,0) > act->getMaxControl()) {
+				activ(i,0) = act->getMaxControl();}
 		}
 	}
 
@@ -683,7 +683,7 @@ begin(SimTK::State& s )
 
 		// Set modeiling options for Actuators to be overriden
 		for(int i=0,j=0; i<_forceSet->getSize(); i++) {
-			Actuator* act = dynamic_cast<Actuator*>(&_forceSet->get(i));
+			ScalarActuator* act = dynamic_cast<ScalarActuator*>(&_forceSet->get(i));
 			if( act ) {
 				act->overrideForce(sWorkingCopy,true);
 			}
@@ -748,8 +748,8 @@ begin(SimTK::State& s )
 		status = record(s);
 		const Set<Actuator>& fs = _modelWorkingCopy->getActuators();
 		for(int k=0;k<fs.getSize();k++) {
-			Actuator& act = fs.get(k);
-			cout << "Bounds for " << act.getName() << ": " << act.getMinControl()<< " to "<< act.getMaxControl() << endl;
+			ScalarActuator* act = dynamic_cast<ScalarActuator*>(&fs.get(k));
+			cout << "Bounds for " << act->getName() << ": " << act->getMinControl()<< " to "<< act->getMaxControl() << endl;
 		}
 	}
 
