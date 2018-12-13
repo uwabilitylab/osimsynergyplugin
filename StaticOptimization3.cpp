@@ -29,9 +29,11 @@
 #include <OpenSim/Simulation/Model/Model.h>
 #include <OpenSim/Actuators/CoordinateActuator.h>
 #include <OpenSim/Simulation/Control/ControlSet.h>
-#include "StaticOptimization3.h"
-#include "StaticOptimizationTarget3.h"
 #include <OpenSim/Simulation/Model/ActivationFiberLengthMuscle.h>
+#include "StaticOptimization3.h"									//KAT
+#include "StaticOptimizationTarget3.h"								//KAT
+#include "ActWeightingMatrix.h"										//KAT
+#include "ActWeightingVector.h"										//KAT
 
 
 using namespace OpenSim;
@@ -59,6 +61,9 @@ StaticOptimization3::StaticOptimization3(Model *aModel) :
 	_useModelForceSet(_useModelForceSetProp.getValueBool()),
 	_activationExponent(_activationExponentProp.getValueDbl()),
 	_useMusclePhysiology(_useMusclePhysiologyProp.getValueBool()),
+	//_nSynergies(_nSynergiesProp.getValueInt()),								//KAT
+	_awmProp(PropertyObj("", ActWeightingMatrix())),							//KAT
+	_awm((ActWeightingMatrix&)_awmProp.getValueObj()),				//KAT
 	_convergenceCriterion(_convergenceCriterionProp.getValueDbl()),
 	_maximumIterations(_maximumIterationsProp.getValueInt()),
 	_modelWorkingCopy(NULL)
@@ -80,6 +85,9 @@ StaticOptimization3::StaticOptimization3(const StaticOptimization3 &aStaticOptim
 	_useModelForceSet(_useModelForceSetProp.getValueBool()),
 	_activationExponent(_activationExponentProp.getValueDbl()),
 	_useMusclePhysiology(_useMusclePhysiologyProp.getValueBool()),
+	//_nSynergies(_nSynergiesProp.getValueInt()),										// KAT
+	_awmProp(PropertyObj("", ActWeightingMatrix())),									// KAT
+	_awm((ActWeightingMatrix&)_awmProp.getValueObj()),						// KAT
 	_convergenceCriterion(_convergenceCriterionProp.getValueDbl()),
 	_maximumIterations(_maximumIterationsProp.getValueInt()),
 	_modelWorkingCopy(NULL)
@@ -112,6 +120,8 @@ operator=(const StaticOptimization3 &aStaticOptimization3)
 	_numCoordinateActuators = aStaticOptimization3._numCoordinateActuators;
 	_useModelForceSet = aStaticOptimization3._useModelForceSet;
 	_activationExponent = aStaticOptimization3._activationExponent;
+	//_nSynergies=aStaticOptimization3._nSynergies;								// KAT
+	_awm = aStaticOptimization3._awm;												// KAT
 	_convergenceCriterion = aStaticOptimization3._convergenceCriterion;
 	_maximumIterations = aStaticOptimization3._maximumIterations;
 	_forceReporter = nullptr;
@@ -125,7 +135,7 @@ operator=(const StaticOptimization3 &aStaticOptimization3)
 */
 void StaticOptimization3::setNull()
 {
-	setAuthors("Jeffrey A. Reinbolt");
+	setAuthors("Jeffrey A. Reinbolt & Kat M. Steele");
 	setupProperties();
 
 	// OTHER VARIABLES
@@ -134,6 +144,7 @@ void StaticOptimization3::setNull()
 	_ownsForceSet = false;
 	_forceSet = NULL;
 	_activationExponent = 2;
+	//_nSynergies = 0;												// KAT
 	_useMusclePhysiology = true;
 	_numCoordinateActuators = 0;
 	_convergenceCriterion = 1e-4;
@@ -158,6 +169,10 @@ setupProperties()
 	_activationExponentProp.setName("activation_exponent");
 	_propertySet.append(&_activationExponentProp);
 
+	/*_nSynergiesProp.setComment(																				// KAT
+	"An integer specifying the number of synergies included in synergy_set.");
+	_nSynergiesProp.setName("num_synergies");
+	_propertySet.append(&_nSynergiesProp);*/
 
 	_useMusclePhysiologyProp.setComment(
 		"If true muscle force-length curve is observed while running optimization.");
@@ -206,6 +221,59 @@ constructColumnLabels()
 		}
 	setColumnLabels(labels);
 }
+void StaticOptimization3::
+constructActivColumnLabels()
+{
+	Array<string> labels;
+	labels.append("time");
+	if (_model) {
+		// Actuators
+		for (int i = 0; i < _forceSet->getSize(); i++) {
+			Actuator* act = dynamic_cast<Actuator*>(&_forceSet->get(i));
+			if (act) labels.append(_forceSet->get(i).getName());
+		}
+		// Actuator Weighting Matrix (if provided)
+		for (int i = 0; i< _awm.getSize(); i++) {
+			ActWeightingVector *awm_element = dynamic_cast<ActWeightingVector*>(&_awm.get(i));
+			labels.append(awm_element->getName());
+		}
+	}
+	setActivColumnLabels(labels);
+}
+void StaticOptimization3::
+constructForceColumnLabels()
+{
+	Array<string> labels;
+	labels.append("time");
+	// Actuators
+	if (_model) {
+		for (int i = 0; i < _forceSet->getSize(); i++) {
+			Actuator* act = dynamic_cast<Actuator*>(&_forceSet->get(i));
+			if (act) labels.append(_forceSet->get(i).getName());
+		}
+	}
+	setForceColumnLabels(labels);
+}
+void StaticOptimization3::		// KAT: Since we are using different column labels need separate column labels from generic analysis
+setActivColumnLabels(const OpenSim::Array<string> &aLabels)
+{
+	_activ_labels = aLabels;
+}
+void StaticOptimization3::
+setForceColumnLabels(const OpenSim::Array<string> &aLabels)
+{
+	_force_labels = aLabels;
+}
+const OpenSim::Array<string> StaticOptimization3::
+getActivColumnLabels() const
+{
+	return _activ_labels;
+}
+const OpenSim::Array<string> StaticOptimization3::
+getForceColumnLabels() const
+{
+	return _force_labels;
+}
 
 //_____________________________________________________________________________
 /**
@@ -214,9 +282,12 @@ constructColumnLabels()
 void StaticOptimization3::
 allocateStorage()
 {
+	constructActivColumnLabels(); // KAT
+	constructForceColumnLabels(); // KAT
+
 	_activationStorage = new Storage(1000, "Static Optimization");
 	_activationStorage->setDescription(getDescription());
-	_activationStorage->setColumnLabels(getColumnLabels());
+	_activationStorage->setColumnLabels(getActivColumnLabels()); //KAT: Specific column labels
 
 }
 
@@ -321,7 +392,14 @@ record(const SimTK::State& s)
 	const Set<Actuator>& fs = _modelWorkingCopy->getActuators();
 
 	int na = fs.getSize();
+	int size_awm = _awm.getSize();				// Size of actuator weighting matrix		// KAT
 	int nacc = _accelerationIndices.getSize();
+
+	// Set number of parameters for optimization												// KAT
+	int np = _actWeightingMatrix.ncol();
+
+	// Get number of muscle 
+	int nm = _modelWorkingCopy->getMuscles().getSize();											// KAT
 
 	// IPOPT
 	_numericalDerivativeStepSize = 0.0001;
@@ -332,11 +410,13 @@ record(const SimTK::State& s)
 
 	// Optimization target
 	_modelWorkingCopy->setAllControllersEnabled(false);
-	StaticOptimizationTarget3 target(sWorkingCopy, _modelWorkingCopy, na, nacc, _useMusclePhysiology);
+	StaticOptimizationTarget3 target(sWorkingCopy, _modelWorkingCopy, np, nacc, _useMusclePhysiology);  // KAT: For SynergyOptimization na = np (number of parameters)
 	target.setStatesStore(_statesStore);
 	target.setStatesSplineSet(_statesSplineSet);
 	target.setActivationExponent(_activationExponent);
 	target.setDX(_numericalDerivativeStepSize);
+	target.setifAWM(size_awm);																// KAT: Need to determine if/when these get set
+	target.setActWeightingMatrix(_actWeightingMatrix);										// NICK
 
 	// Pick optimizer algorithm
 	SimTK::OptimizerAlgorithm algorithm = SimTK::InteriorPoint;
@@ -364,13 +444,38 @@ record(const SimTK::State& s)
 
 	// Parameter bounds
 	SimTK::Vector lowerBounds(na), upperBounds(na);
-	for (int i = 0, j = 0; i<fs.getSize(); i++) {
-		ScalarActuator* act = dynamic_cast<ScalarActuator*>(&fs.get(i));
-		if (act) {
-			lowerBounds(j) = act->getMinControl();
-			upperBounds(j) = act->getMaxControl();
-			j++;
+	if (size_awm <= 0) { // Bounds from actuators if no actuator weighting matrix
+		for (int i = 0, j = 0; i < fs.getSize(); i++) {
+			ScalarActuator* act = dynamic_cast<ScalarActuator*>(&fs.get(i));
+			if (act) {
+				lowerBounds(j) = act->getMinControl();
+				upperBounds(j) = act->getMaxControl();
+				j++;
+			}
 		}
+	} else {
+		for (int i = 0; i<np; i++) {								// KAT: Need to add if statement and variables to define upper/lowerBounds
+																	// Check if actuator is muscle (0 - 1 activation constraints)
+			double s_sum = 0.0;
+			double s_max = 0.0;
+			for (int j = 0; j<nm; j++) { // For muscles ONLY
+				s_sum = s_sum + _actWeightingMatrix(j, i);
+				if (_actWeightingMatrix(j, i) > s_max) { s_max = _actWeightingMatrix(j, i); }
+			}
+			//std::cout<<s_sum<<endl;
+			//std::cout<<i<<endl;
+			if (s_sum == 0) { // No actuators that are muscles have weights
+				lowerBounds(i) = -10000;  // Default for reserve actuators
+				upperBounds(i) = 10000;
+			}
+			else { // Muscles that have max activation of 1
+				lowerBounds(i) = 0;
+				upperBounds(i) = 1 / s_max;
+			}
+		}
+		//std::cout<<lowerBounds<<endl;
+		//std::cout<<upperBounds<<endl;
+
 	}
 
 	target.setParameterLimits(lowerBounds, upperBounds);
@@ -399,75 +504,79 @@ record(const SimTK::State& s)
 		cout << "StaticOptimization3.record:  WARN- The optimizer could not find a solution at time = " << s.getTime() << endl;
 		cout << endl;
 
-		double tolBounds = 1e-1;
-		bool weakModel = false;
-		string msgWeak = "The model appears too weak for static optimization.\nTry increasing the strength and/or range of the following force(s):\n";
-		for (int a = 0; a<na; a++) {
-			Actuator* act = dynamic_cast<Actuator*>(&_forceSet->get(a));
-			if (act) {
-				Muscle*  mus = dynamic_cast<Muscle*>(&_forceSet->get(a));
-				if (mus == NULL) {
-					if (_parameters(a) < (lowerBounds(a) + tolBounds)) {
-						msgWeak += "   ";
-						msgWeak += act->getName();
-						msgWeak += " approaching lower bound of ";
-						ostringstream oLower;
-						oLower << lowerBounds(a);
-						msgWeak += oLower.str();
-						msgWeak += "\n";
-						weakModel = true;
+		// WARNING messages about a weak model only if not using actuator weight matrix					// KAT
+		if (size_awm <= 0) {
+			double tolBounds = 1e-1;
+			bool weakModel = false;
+			string msgWeak = "The model appears too weak for static optimization.\nTry increasing the strength and/or range of the following force(s):\n";
+			for (int a = 0; a < na; a++) {
+				Actuator* act = dynamic_cast<Actuator*>(&_forceSet->get(a));
+				if (act) {
+					Muscle*  mus = dynamic_cast<Muscle*>(&_forceSet->get(a));
+					if (mus == NULL) {
+						if (_parameters(a) < (lowerBounds(a) + tolBounds)) {
+							msgWeak += "   ";
+							msgWeak += act->getName();
+							msgWeak += " approaching lower bound of ";
+							ostringstream oLower;
+							oLower << lowerBounds(a);
+							msgWeak += oLower.str();
+							msgWeak += "\n";
+							weakModel = true;
+						}
+						else if (_parameters(a) > (upperBounds(a) - tolBounds)) {
+							msgWeak += "   ";
+							msgWeak += act->getName();
+							msgWeak += " approaching upper bound of ";
+							ostringstream oUpper;
+							oUpper << upperBounds(a);
+							msgWeak += oUpper.str();
+							msgWeak += "\n";
+							weakModel = true;
+						}
 					}
-					else if (_parameters(a) > (upperBounds(a) - tolBounds)) {
-						msgWeak += "   ";
-						msgWeak += act->getName();
-						msgWeak += " approaching upper bound of ";
-						ostringstream oUpper;
-						oUpper << upperBounds(a);
-						msgWeak += oUpper.str();
-						msgWeak += "\n";
-						weakModel = true;
+					else {
+						if (_parameters(a) > (upperBounds(a) - tolBounds)) {
+							msgWeak += "   ";
+							msgWeak += mus->getName();
+							msgWeak += " approaching upper bound of ";
+							ostringstream o;
+							o << upperBounds(a);
+							msgWeak += o.str();
+							msgWeak += "\n";
+							weakModel = true;
+						}
 					}
 				}
-				else {
-					if (_parameters(a) > (upperBounds(a) - tolBounds)) {
-						msgWeak += "   ";
-						msgWeak += mus->getName();
-						msgWeak += " approaching upper bound of ";
+			}
+
+			if (weakModel) cout << msgWeak << endl;
+
+			if (!weakModel) {
+				double tolConstraints = 1e-6;
+				bool incompleteModel = false;
+				string msgIncomplete = "The model appears unsuitable for static optimization.\nTry appending the model with additional force(s) or locking joint(s) to reduce the following acceleration constraint violation(s):\n";
+				SimTK::Vector constraints;
+				target.constraintFunc(_parameters, true, constraints);
+
+				auto coordinates = _modelWorkingCopy->getCoordinatesInMultibodyTreeOrder();
+
+				for (int acc = 0; acc < nacc; acc++) {
+					if (fabs(constraints(acc)) > tolConstraints) {
+						const Coordinate& coord = *coordinates[_accelerationIndices[acc]];
+						msgIncomplete += "   ";
+						msgIncomplete += coord.getName();
+						msgIncomplete += ": constraint violation = ";
 						ostringstream o;
-						o << upperBounds(a);
-						msgWeak += o.str();
-						msgWeak += "\n";
-						weakModel = true;
+						o << constraints(acc);
+						msgIncomplete += o.str();
+						msgIncomplete += "\n";
+						incompleteModel = true;
 					}
 				}
+				_forceReporter->step(sWorkingCopy, 1);
+				if (incompleteModel) cout << msgIncomplete << endl;
 			}
-		}
-		if (weakModel) cout << msgWeak << endl;
-
-		if (!weakModel) {
-			double tolConstraints = 1e-6;
-			bool incompleteModel = false;
-			string msgIncomplete = "The model appears unsuitable for static optimization.\nTry appending the model with additional force(s) or locking joint(s) to reduce the following acceleration constraint violation(s):\n";
-			SimTK::Vector constraints;
-			target.constraintFunc(_parameters, true, constraints);
-
-			auto coordinates = _modelWorkingCopy->getCoordinatesInMultibodyTreeOrder();
-
-			for (int acc = 0; acc<nacc; acc++) {
-				if (fabs(constraints(acc)) > tolConstraints) {
-					const Coordinate& coord = *coordinates[_accelerationIndices[acc]];
-					msgIncomplete += "   ";
-					msgIncomplete += coord.getName();
-					msgIncomplete += ": constraint violation = ";
-					ostringstream o;
-					o << constraints(acc);
-					msgIncomplete += o.str();
-					msgIncomplete += "\n";
-					incompleteModel = true;
-				}
-			}
-			_forceReporter->step(sWorkingCopy, 1);
-			if (incompleteModel) cout << msgIncomplete << endl;
 		}
 	}
 
@@ -476,6 +585,22 @@ record(const SimTK::State& s)
 	//cout << "optimizer time = " << (duration*1.0e3) << " milliseconds" << endl;
 
 	target.printPerformance(sWorkingCopy, &_parameters[0]);
+
+	/* Calculate activations based upon current parameters */						// KAT: Only need if using activation weighting matrix
+	SimTK::Matrix activ(na, 1);
+	activ = _actWeightingMatrix * _parameters;
+	if (size_awm > 0) {
+		/* Make sure activations are within actuator limits */												// KAT: Limits on activations based on control constraints
+		for (int i = 0; i<na; i++) {
+			ScalarActuator* act = dynamic_cast<ScalarActuator*>(&fs.get(i));
+			if (activ(i, 0) < act->getMinControl()) {
+				activ(i, 0) = act->getMinControl();
+			}
+			if (activ(i, 0) > act->getMaxControl()) {
+				activ(i, 0) = act->getMaxControl();
+			}
+		}
+	}
 
 	//update defaults for use in the next step
 
@@ -487,12 +612,27 @@ record(const SimTK::State& s)
 		}
 	}
 
-	_activationStorage->append(sWorkingCopy.getTime(), na, &_parameters[0]);
-
 	SimTK::Vector forces(na);
-	target.getActuation(const_cast<SimTK::State&>(sWorkingCopy), _parameters, forces);
+	if (size_awm <= 0) { // If no actuator weight matrix, just activations
+		_activationStorage->append(sWorkingCopy.getTime(), na, &_parameters[0]);
+		target.getActuation(const_cast<SimTK::State&>(sWorkingCopy), _parameters, forces);
 
-	_forceReporter->step(sWorkingCopy, 1);
+		_forceReporter->step(sWorkingCopy, 1);
+	} else { // activations + activation of weighted groups
+		SimTK::Vector toStoreAct(actuators.getSize() + _parameters.size());
+		for (int k = 0; k < actuators.getSize(); k++) {
+			toStoreAct(k) = activ(k, 0);
+		}
+		for (int k = 0; k < _parameters.size(); k++) {
+			toStoreAct(actuators.getSize() + k) = _parameters(k);
+		}
+		_activationStorage->append(sWorkingCopy.getTime(), size_awm + na, &toStoreAct[0]);
+
+		SimTK::Vector toStoreForces = activ.col(0);
+		target.getActuation(const_cast<SimTK::State&>(sWorkingCopy), toStoreForces, forces);
+
+		_forceReporter->step(sWorkingCopy, 1);
+	}
 
 	return 0;
 }
@@ -574,6 +714,19 @@ int StaticOptimization3::begin(const SimTK::State& s)
 
 		int na = _forceSet->getSize();
 		int nacc = _accelerationIndices.getSize();
+		int size_awm = _awm.getSize();				// Size of actuator weighting matrix		// KAT
+
+													// RECORD ACTUATOR WEIGHT MATRIX FROM FILE OR USE IDENTITY MATRIX			// KAT
+		if (size_awm <= 0) {
+			_actWeightingMatrix.resize(na, na);
+			_actWeightingMatrix.diag() = 1; // Identity matrix
+		}
+		else {
+			recordActWeightingMatrix(_forceSet);
+		}
+
+		// Set number of parameters for optimization												// KAT
+		int np = _actWeightingMatrix.ncol();
 
 		if (na < nacc)
 			throw(Exception("StaticOptimization3: ERROR- over-constrained "
@@ -583,7 +736,7 @@ int StaticOptimization3::begin(const SimTK::State& s)
 		_forceReporter->begin(sWorkingCopy);
 		_forceReporter->updForceStorage().reset();
 
-		_parameters.resize(_modelWorkingCopy->getNumControls());
+		_parameters.resize(np); 														// KAT: Changed from _modelWorkingCopy->getNumControls() to np 
 		_parameters = 0;
 	}
 
@@ -592,6 +745,8 @@ int StaticOptimization3::begin(const SimTK::State& s)
 	// DESCRIPTION AND LABELS
 	constructDescription();
 	constructColumnLabels();
+	// constructActivColumnLabels(); // KAT
+	// constructForceColumnLabels(); // KAT
 
 	deleteStorage();
 	allocateStorage();
@@ -658,6 +813,39 @@ int StaticOptimization3::end(const SimTK::State& s)
 	if (!proceed()) return(0);
 
 	record(s);
+
+	return(0);
+}
+
+/**
+* KAT: This method is called during the analysis to record the synergies
+* specified in SynergySet.
+*
+* input: actuator set of model (model_actuators)
+* output: _actWeightingMatrix
+*/
+int StaticOptimization3::
+recordActWeightingMatrix(ForceSet *const forceSet) //const Set<Actuator>& model_actuators)
+{
+	//Set vector size to number of actuators
+	_actWeightingMatrix.resize(forceSet->getActuators().getSize(), _awm.getSize());
+
+	/* Check to make sure num_synergies = number of synergies specified
+	if(_awm.getSize() != _nSynergies) {
+	throw(Exception("StaticOptimization3: ERROR- number of synergies provided is different from number specified (num_synergies)\n"));
+	} */
+
+	//Add vectors from xml to weighting matrix
+	for (int i = 0; i< _awm.getSize(); i++)
+	{
+		ActWeightingVector *awm_element = dynamic_cast<ActWeightingVector*>(&_awm.get(i));
+		Array<double> awv = awm_element->getActWeightingVector();
+		// TO DO: Check if unit length
+		for (int j = 0; j < forceSet->getActuators().getSize(); j++)
+		{
+			_actWeightingMatrix(j, i) = awv[j];
+		}
+	}
 
 	return(0);
 }

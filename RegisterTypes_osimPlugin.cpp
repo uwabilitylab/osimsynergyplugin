@@ -27,7 +27,7 @@
 
 #include "ActWeightingVector.h"
 #include "ActWeightingMatrix.h"
-#include "StaticOptimization2.h"
+#include "StaticOptimization3.h"
 
 using namespace OpenSim;
 using namespace std;
@@ -43,7 +43,7 @@ OSIMPLUGIN_API void RegisterTypes_osimPlugin()
 {
 	Object::RegisterType( ActWeightingVector() );
 	Object::RegisterType( ActWeightingMatrix() );
-	Object::RegisterType( StaticOptimization2() );
+	Object::RegisterType( StaticOptimization3() );
     
 }
 

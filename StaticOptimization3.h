@@ -10,7 +10,8 @@
 * through the Warrior Web program.                                           *
 *                                                                            *
 * Copyright (c) 2005-2017 Stanford University and the Authors                *
-* Author(s): Jeffrey A. Reinbolt                                             *
+* Author(s): Jeffrey A. Reinbolt with additions for matrix weights           *
+*            from Kat M. Steele                                             *
 *                                                                            *
 * Licensed under the Apache License, Version 2.0 (the "License"); you may    *
 * not use this file except in compliance with the License. You may obtain a  *
@@ -32,6 +33,8 @@
 #include <OpenSim/Simulation/Model/Analysis.h>
 #include <OpenSim/Common/GCVSplineSet.h>
 #include <OpenSim/Analyses/ForceReporter.h>
+#include "ActWeightingMatrix.h"									// KAT
+#include <OpenSim/Common/PropertyObj.h>							// NICK
 
 //=============================================================================
 //=============================================================================
@@ -69,6 +72,18 @@ namespace OpenSim {
 
 		PropertyBool _useMusclePhysiologyProp;
 		bool    &_useMusclePhysiology;
+
+		//PropertyInt _nSynergiesProp;					// KAT
+		//int &_nSynergies;								// KAT
+
+		SimTK::Matrix _actWeightingMatrix;				// KAT
+		int _ifAWM;
+
+		OpenSim::Array<std::string> _activ_labels;			// KAT
+		OpenSim::Array<std::string> _force_labels;
+
+		PropertyObj _awmProp;							// KAT
+		ActWeightingMatrix &_awm;						// KAT
 
 		PropertyDbl _convergenceCriterionProp;
 		double &_convergenceCriterion;
@@ -111,6 +126,12 @@ namespace OpenSim {
 		void setNull();
 		void setupProperties();
 		void constructDescription();
+		void constructActivColumnLabels(); // KAT
+		void constructForceColumnLabels(); // KAT
+		void setActivColumnLabels(const OpenSim::Array<std::string> &aLabels); //KAT
+		const OpenSim::Array<std::string> getActivColumnLabels() const; //KAT
+		void setForceColumnLabels(const OpenSim::Array<std::string> &aLabels); //KAT
+		const OpenSim::Array<std::string> getForceColumnLabels() const; //KAT
 		void constructColumnLabels();
 		void allocateStorage();
 		void deleteStorage();
@@ -131,6 +152,8 @@ namespace OpenSim {
 		double getActivationExponent() const { return _activationExponent; }
 		void setUseMusclePhysiology(const bool useIt) { _useMusclePhysiology = useIt; }
 		bool getUseMusclePhysiology() const { return _useMusclePhysiology; }
+		void setifAWM(int ns) { _ifAWM = ns; }											//KAT
+		//int getNSynergies() const {return _nSynergies; }												//KAT
 		void setConvergenceCriterion(const double tolerance) { _convergenceCriterion = tolerance; }
 		double getConvergenceCriterion() { return _convergenceCriterion; }
 		void setMaxIterations(const int maxIt) { _maximumIterations = maxIt; }
@@ -142,6 +165,8 @@ namespace OpenSim {
 			begin(const SimTK::State& s) override;
 		int
 			step(const SimTK::State& s, int setNumber) override;
+		virtual int														//KAT
+			recordActWeightingMatrix(ForceSet *const forceSet);		//KAT
 		int
 			end(const SimTK::State& s) override;
 	protected:

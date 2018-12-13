@@ -31,6 +31,8 @@
 #include <OpenSim/Common/GCVSplineSet.h>
 #include <simmath/Optimizer.h>
 
+class ActWeightingMatrix;										// KAT
+
 //=============================================================================
 //=============================================================================
 namespace OpenSim {
@@ -65,12 +67,19 @@ namespace OpenSim {
 		SimTK::Matrix _constraintMatrix;
 		SimTK::Vector _constraintVector;
 
+		/** Matrix of weights and coupling between muscles. */				// KAT
+		//SimTK::Matrix _actWeightingMatrix;										// KAT
+
 		const Storage *_statesStore;
 		GCVSplineSet _statesSplineSet;
 
 	protected:
 		double _activationExponent;
 		bool   _useMusclePhysiology;
+
+		int _ifAWM;															// KAT
+		SimTK::Matrix _actWeightingMatrix;													// KAT
+
 		/** Perturbation size for computing numerical derivatives. */
 		Array<double> _dx;
 		Array<int> _accelerationIndices;
@@ -94,6 +103,9 @@ namespace OpenSim {
 		void getActuation(SimTK::State& s, const SimTK::Vector &parameters, SimTK::Vector &forces);
 		void setActivationExponent(double aActivationExponent) { _activationExponent = aActivationExponent; }
 		double getActivationExponent() const { return _activationExponent; }
+		void setifAWM(int ns) { _ifAWM = ns; }															//KAT
+		//double getNSynergies() const { return _nSynergies; }													//KAT
+		void setActWeightingMatrix(const SimTK::Matrix aAWM) { _actWeightingMatrix = aAWM; }									//KAT
 		void setCurrentState(const SimTK::State* state) { _currentState = state; }
 		const SimTK::State* getCurrentState() const { return _currentState; }
 

@@ -61,6 +61,10 @@ StaticOptimizationTarget3::
 StaticOptimizationTarget3(const SimTK::State& s, Model *aModel, int aNP, int aNC, bool useMusclePhysiology)
 {
 	// ALLOCATE STATE ARRAYS
+	int na = aModel->getActuators().getSize();							//KAT: For synergy case need the number of actuators 
+	_recipAreaSquared.setSize(na);										//KAT: aNP replaced with na
+	_recipOptForceSquared.setSize(na);									//KAT: aNP replaced with na
+	_optimalForce.setSize(na);											//KAT: aNP replaced with na
 	_recipAreaSquared.setSize(aNP);
 	_recipOptForceSquared.setSize(aNP);
 	_optimalForce.setSize(aNP);
@@ -92,7 +96,9 @@ prepareToOptimize(SimTK::State& s, double *x)
 	// COMPUTE MAX ISOMETRIC FORCE
 	const ForceSet& fSet = _model->getForceSet();
 
-	for (int i = 0, j = 0; i<fSet.getSize(); i++) {
+	int na = _model->getActuators().getSize();							//KAT: Number of actuators
+
+	for (int i = 0, j = 0; i<fSet.getSize(); i++) {						//KAT: May be able to replace fSet.getSize() with na
 		ScalarActuator* act = dynamic_cast<ScalarActuator*>(&fSet.get(i));
 		if (act) {
 			double fOpt;
@@ -469,9 +475,9 @@ objectiveFunc(const Vector &parameters, const bool new_parameters, Real &perform
 	//QueryPerformanceFrequency(&frequency);
 	//QueryPerformanceCounter(&start);
 
-	int na = _model->getActuators().getSize();
+	int np = parameters.size();
 	double p = 0.0;
-	for (int i = 0; i<na; i++) {
+	for (int i = 0; i<np; i++) {												//KAT: Replace na with np
 		p += pow(fabs(parameters[i]), _activationExponent);
 	}
 	performance = p;
@@ -505,8 +511,8 @@ gradientFunc(const Vector &parameters, const bool new_parameters, Vector &gradie
 	//QueryPerformanceFrequency(&frequency);
 	//QueryPerformanceCounter(&start);
 
-	int na = _model->getActuators().getSize();
-	for (int i = 0; i<na; i++) {
+	int np = parameters.size();											// KAT: Same as above, replace na with np
+	for (int i = 0; i<np; i++) {
 		if (parameters[i] < 0) {
 			gradient[i] = -1.0 * _activationExponent * pow(fabs(parameters[i]), _activationExponent - 1.0);
 		}
@@ -663,7 +669,22 @@ computeAcceleration(SimTK::State& s, const SimTK::Vector &parameters, SimTK::Vec
 {
 	// double time = s.getTime();
 
+	/* Calculate activations based upon current parameters */									//KAT
+	int na = _model->getActuators().getSize();
+	SimTK::Matrix activ(na, 1);
 
+	activ = _actWeightingMatrix * parameters;
+	if (_ifAWM>0) {
+		const Set<Actuator>& fs = _model->getActuators();
+		// Make sure activations are within actuator limits 												// KAT: Limits on activations based on control constraints
+		for (int i = 0; i<na; i++) {
+			ScalarActuator *act = dynamic_cast<ScalarActuator*>(&fs.get(i));
+			if (activ(i, 0) < act->getMinControl()) { activ(i, 0) = act->getMinControl(); }
+			if (activ(i, 0) > act->getMaxControl()) { activ(i, 0) = act->getMaxControl(); }
+		}
+	}
+
+	/* compute acceleration*/
 	const ForceSet& fs = _model->getForceSet();
 	for (int i = 0, j = 0; i<fs.getSize(); i++) {
 		ScalarActuator *act = dynamic_cast<ScalarActuator*>(&fs.get(i));
