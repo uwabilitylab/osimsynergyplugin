@@ -174,6 +174,10 @@ setupProperties()
 	_nSynergiesProp.setName("num_synergies");
 	_propertySet.append(&_nSynergiesProp);*/
 
+	_awmProp.setComment("Set used to specify actuator weight matrix for synergy optimization.");  //KAT
+	_awmProp.setName("ActWeightingMatrix");
+	_propertySet.append(&_awmProp);
+
 	_useMusclePhysiologyProp.setComment(
 		"If true muscle force-length curve is observed while running optimization.");
 	_useMusclePhysiologyProp.setName("use_muscle_physiology");
@@ -825,7 +829,7 @@ int StaticOptimization3::end(const SimTK::State& s)
 * output: _actWeightingMatrix
 */
 int StaticOptimization3::
-recordActWeightingMatrix(ForceSet *const forceSet) //const Set<Actuator>& model_actuators)
+recordActWeightingMatrix(ForceSet *const forceSet)
 {
 	//Set vector size to number of actuators
 	_actWeightingMatrix.resize(forceSet->getActuators().getSize(), _awm.getSize());
