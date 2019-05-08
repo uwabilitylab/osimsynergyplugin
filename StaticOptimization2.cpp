@@ -613,7 +613,7 @@ record(const SimTK::State& s)
 	SimTK::Vector forces(na);
 	if(size_awm<=0){ // If no actuator weight matrix, just activations
 		_activationStorage->append(sWorkingCopy.getTime(),na,&_parameters[0]);
-		target.getActuation(const_cast<SimTK::State&>(sWorkingCopy), _parameters,forces);
+		//target.getActuation(const_cast<SimTK::State&>(sWorkingCopy), _parameters,forces);
 		_forceStorage->append(sWorkingCopy.getTime(),na,&forces[0]);
 	}else{		// activations + activation of weighted groups
 		SimTK::Vector toStoreAct(actuators.getSize()+_parameters.size()); 
@@ -625,7 +625,7 @@ record(const SimTK::State& s)
 		}
 		_activationStorage->append(sWorkingCopy.getTime(),size_awm+na,&toStoreAct[0]);
 		SimTK::Vector toStoreForces = activ.col(0);	
-		target.getActuation(const_cast<SimTK::State&>(sWorkingCopy), toStoreForces, forces); 
+		//target.getActuation(const_cast<SimTK::State&>(sWorkingCopy), _parameters, forces);
 		_forceStorage->append(sWorkingCopy.getTime(),na,&forces[0]);
 	}
 
